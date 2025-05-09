@@ -1,0 +1,104 @@
+-- ~/.config/nvim/lua/user/colors/wez.lua
+
+--- Darken a hex color by a given fraction.
+--- @param hex string  A color like "#rrggbb"
+--- @param amount number  A value between 0 (no change) and 1 (black)
+--- @return string  The darkened color "#rrggbb"
+local function darken(hex, amount)
+  -- Strip "#" if present
+  hex = hex:gsub("^#", "")
+  -- Parse channels
+  local r = tonumber(hex:sub(1, 2), 16)
+  local g = tonumber(hex:sub(3, 4), 16)
+  local b = tonumber(hex:sub(5, 6), 16)
+  -- Darken each channel and clamp
+  local function clamp(x)
+    return math.max(0, math.min(255, x))
+  end
+  r = clamp(math.floor(r * (1 - amount) + 0.5))
+  g = clamp(math.floor(g * (1 - amount) + 0.5))
+  b = clamp(math.floor(b * (1 - amount) + 0.5))
+  -- Format back to hex
+  return string.format("#%02x%02x%02x", r, g, b)
+end
+
+local M = {}
+M.palette = {
+  -- ANSI 0–15
+  "#000000",
+  "#cc5555",
+  "#55cc55",
+  "#cdcd55",
+  "#5555cc",
+  "#cc55cc",
+  "#7acaca",
+  "#cccccc",
+  "#555555",
+  "#ff5555",
+  "#55ff55",
+  "#ffff55",
+  "#5555ff",
+  "#ff55ff",
+  "#55ffff",
+  "#ffffff",
+}
+M.bg = "#000000"
+M.fg = "#b3b3b3"
+M.cursor = "#53ae71"
+M.cursortext = "#000000"
+M.sel_bg = "#4d52f8"
+M.sel_fg = "#000000"
+
+function M.setup()
+  -- clear existing highlights
+  vim.cmd("highlight clear")
+  vim.o.background = "dark"
+  vim.g.colors_name = "wez"
+
+  local c = M
+  local set = vim.api.nvim_set_hl
+
+  -- 1) ANSI palette for embedded terminal
+  vim.g.terminal_ansi_colors = c.palette
+
+  -- 2) Core UI
+  set(0, "Normal", { fg = c.fg, bg = c.bg })
+  set(0, "Cursor", { fg = c.cursor, bg = c.cursortext })
+  set(0, "CursorLine", { bg = darken(c.bg, 0.07) })
+  set(0, "CursorColumn", { bg = darken(c.bg, 0.07) })
+  set(0, "Visual", { fg = c.sel_fg, bg = c.sel_bg })
+  set(0, "ColorColumn", { bg = darken(c.bg, 0.10) })
+  set(0, "LineNr", { fg = c.palette[10] }) -- bright green for line numbers
+  set(0, "CursorLineNr", { fg = c.palette[11], bold = true })
+
+  -- 3) Search & IncSearch
+  set(0, "Search", { fg = c.sel_fg, bg = c.palette[4] })
+  set(0, "IncSearch", { fg = c.bg, bg = c.palette[12] })
+
+  -- 4) Popup menu
+  set(0, "Pmenu", { fg = c.fg, bg = c.palette[9] })
+  set(0, "PmenuSel", { fg = c.sel_fg, bg = c.sel_bg })
+  set(0, "PmenuSbar", { bg = c.palette[9] })
+  set(0, "PmenuThumb", { bg = c.palette[11] })
+
+  -- 5) Comments & Matching
+  set(0, "Comment", { fg = c.palette[8], italic = true })
+  set(0, "MatchParen", { fg = c.palette[13], bg = c.palette[1], bold = true })
+
+  -- 6) Diagnostics (LSP)
+  set(0, "DiagnosticError", { fg = c.palette[2] })
+  set(0, "DiagnosticWarn", { fg = c.palette[4] })
+  set(0, "DiagnosticInfo", { fg = c.palette[5] })
+  set(0, "DiagnosticHint", { fg = c.palette[7] })
+
+  -- 7) Treesitter (basic)
+  set(0, "@keyword", { fg = c.palette[6], bold = true })
+  set(0, "@string", { fg = c.palette[3] })
+  set(0, "@function", { fg = c.palette[5] })
+  set(0, "@type", { fg = c.palette[13], italic = true })
+  set(0, "@constant", { fg = c.palette[14] })
+
+  -- …add more TS/LSP/link groups as needed…
+end
+
+return M
