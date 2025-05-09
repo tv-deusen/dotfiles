@@ -55,7 +55,5 @@ set -g fish_color_search_match --background=normal
 # Load Node stuff
 nvm use latest >/dev/null
 
-# Load secrets (Actually I think if secrets.fish is in conf.d we don't need this)
-# if test -f ~/.config/fish/conf.d/secrets.fish
-#     source ~/.config/fish/conf.d/secrets.fish
-# end
+# Ollama integration
+bind \cL ollama_prompt

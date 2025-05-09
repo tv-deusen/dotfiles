@@ -48,13 +48,11 @@
 # theme = catpuccin-dark
 # theme = Wez
 theme = tokyonight
-minimum-contrast = 1.1
+# minimum-contrast = 1.1
 
 config-file = keybinds/split
 config-file = nerdfont/jetbrains
 
-# custom-shader = shaders/starfield.glsl
-# custom-shader-animation = true
-
 # Use fish shell as default
 command = /usr/bin/fish --login --interactive
+shell-integration = fish
