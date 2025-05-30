@@ -1,0 +1,175 @@
+function wg_random_server
+    set -l config_dir "$HOME/.config/vopono/mv/wireguard"
+    set -l vopono_config_path "$HOME/.config/vopono/config.toml"
+
+    if not test -d "$config_dir"
+        echo "Error: Vopono WireGuard config directory '$config_dir' not found." >&2
+        return 1
+    end
+
+    set -l all_config_files (ls $config_dir/*.conf 2>/dev/null)
+    if test (count $all_config_files) -eq 0
+        echo "Error: No WireGuard config files found in '$config_dir'." >&2
+        return 1
+    end
+
+    # --- Argument Parsing ---
+    set -l list_countries_flag false
+    set -l update_reconnect_flag false
+    set -l target_country ""
+    set -l unknown_options
+
+    for arg in $argv
+        switch $arg
+            case "-l"
+                set list_countries_flag true
+            case "-u"
+                set update_reconnect_flag true
+            case "*" # Default case for potential country name or unknown flag
+                if string match -q -- "-*" $arg # Check if it looks like a flag
+                    set -a unknown_options $arg # Add to unknown options if it starts with '-' but isn't -l or -u
+                else
+                    # Assume it's a country name
+                    if test -n "$target_country"
+                        echo "Error: Multiple country arguments provided ('$target_country' and '$arg'). Please specify only one country." >&2
+                        return 1
+                    end
+                    set target_country (string lower $arg)
+                end
+        end
+    end
+
+    if test (count $unknown_options) -gt 0
+        echo "Error: Unknown option(s): $unknown_options" >&2
+        echo "Usage: wg_random_server [options] [country_identifier]" >&2
+        echo "Options:" >&2
+        echo "  -l         List available country identifiers (cannot be used with -u or a country)." >&2
+        echo "  -u         Select server, update Vopono config, and (re)connect." >&2
+        return 1
+    end
+
+    # Validate incompatible flag combinations
+    if $list_countries_flag
+        if $update_reconnect_flag
+            echo "Error: The -l (list countries) and -u (update and reconnect) flags cannot be used together." >&2
+            return 1
+        end
+        if test -n "$target_country"
+            echo "Error: A country argument ('$target_country') cannot be used with the -l (list countries) flag." >&2
+            return 1
+        end
+    end
+    # --- End of Argument Parsing ---
+
+    # Mode 1: List countries
+    if $list_countries_flag
+        set -l country_identifiers
+        for file in $all_config_files
+            set -l server_basename (basename $file .conf)
+            if test -z "$server_basename"; continue; end
+
+            set -l identifier (string lower (echo $server_basename | cut -d'-' -f1))
+            if test -n "$identifier"; set -a country_identifiers $identifier; end
+        end
+
+        if test (count $country_identifiers) -eq 0
+            echo "No country identifiers could be extracted from config files in '$config_dir'." >&2
+            return 1
+        end
+
+        echo "Available country identifiers (use these as arguments to filter servers):"
+        printf "%s\n" $country_identifiers | sort -u
+        return 0
+    end
+
+    # Mode 2 & 3: Select server (for echoing or for update-and-reconnect)
+    set -l available_servers
+    for file in $all_config_files
+        set -l server_full_name (basename $file .conf)
+        if test -z "$server_full_name"; continue; end
+
+        set -l file_country_name (string lower (echo $server_full_name | cut -d'-' -f1))
+
+        if test -n "$target_country"
+            if test "$file_country_name" = "$target_country"
+                set -a available_servers $server_full_name
+            end
+        else
+            set -a available_servers $server_full_name
+        end
+    end
+
+    if test (count $available_servers) -eq 0
+        if test -n "$target_country"
+            echo "Error: No WireGuard servers found for country: '$target_country' in '$config_dir'." >&2
+            echo "Use the -l flag to list available country identifiers." >&2
+        else
+            echo "Error: No suitable WireGuard configurations found in '$config_dir'." >&2
+        end
+        return 1
+    end
+
+    set -l random_index (random 1 (count $available_servers))
+    set -l chosen_server_name $available_servers[$random_index]
+
+    if test -z "$chosen_server_name"
+        echo "Error: Failed to select a server name unexpectedly." >&2
+        return 1
+    end
+
+    # Perform action based on flags or default behavior
+    if $update_reconnect_flag
+        echo "Selected server for Vopono: $chosen_server_name"
+
+        if not test -f "$vopono_config_path"
+            echo "Error: Vopono config file '$vopono_config_path' not found." >&2
+            return 1
+        end
+
+        cp "$vopono_config_path" "$vopono_config_path.bak"
+        if test $status -ne 0
+            echo "Error: Failed to create backup of '$vopono_config_path'." >&2
+            return 1
+        end
+        echo "Backup of config created at $vopono_config_path.bak"
+
+        set temp_config_file (mktemp)
+        sed "s|^server = \".*\"|server = \"$chosen_server_name\"|" "$vopono_config_path" > "$temp_config_file"
+        if test $status -ne 0
+            echo "Error: Failed to prepare updated Vopono config (sed command failed)." >&2
+            rm -f "$temp_config_file"
+            return 1
+        end
+
+        if cmp -s "$vopono_config_path" "$temp_config_file"
+            echo "Warning: Server line in '$vopono_config_path' might not have been updated." >&2
+            echo "(Pattern 'server = \"...\"' not found, or server was already set to '$chosen_server_name')." >&2
+        end
+
+        mv "$temp_config_file" "$vopono_config_path"
+        if test $status -ne 0
+            echo "Error: Failed to move updated config to '$vopono_config_path'." >&2
+            rm -f "$temp_config_file"
+            return 1
+        end
+        echo "Vopono config '$vopono_config_path' updated. Server set to: $chosen_server_name"
+
+        echo "Attempting to (re)connect Vopono using 'vopono connect'..."
+        if command -v vopono > /dev/null
+            vopono connect
+            if test $status -ne 0
+                echo "Warning: 'vopono connect' command finished with status $status." >&2
+            else
+                echo "'vopono connect' command executed. Vopono should now be (re)connecting to $chosen_server_name."
+            end
+        else
+            echo "Error: 'vopono' command not found. Please ensure it is installed and in your PATH." >&2
+            return 1
+        end
+    else
+        # Default behavior: just output the chosen server name
+        echo $chosen_server_name
+    end
+
+    return 0
+end

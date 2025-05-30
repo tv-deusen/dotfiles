@@ -1,0 +1,3 @@
+#!/bin/bash
+# Main executable wrapper for KeePassXC openssl automation service
+exec "/home/user/.local/share/kpxc-openssl-automation/run-automation.sh" "$@"

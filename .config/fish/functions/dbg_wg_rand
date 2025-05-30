@@ -1,0 +1,78 @@
+# ~/.config/fish/functions/wg_random_server.fish
+
+function wg_random_server
+    set -l config_dir "$HOME/.config/vopono/mv/wireguard"
+
+    echo "DEBUG: Looking for configs in: '$config_dir'" >&2
+
+    if not test -d "$config_dir"
+        echo "Error: Vopono WireGuard config directory '$config_dir' not found." >&2
+        echo "Please ensure your Mullvad configs are in this location." >&2
+        return 1
+    end
+
+    set -l target_country ""
+    if count $argv > /dev/null
+        set target_country (echo $argv[1] | tr '[:upper:]' '[:lower:]')
+    end
+
+    set -l available_servers
+
+    # --- SIMPLIFIED LS AND FILTERING ---
+    # List all entries (files/dirs) in the directory
+    set -l all_entries (ls -A "$config_dir" 2>/dev/null) # -A includes hidden files/dirs, excludes . and ..
+
+    if test (count $all_entries) -eq 0
+        echo "DEBUG: Directory '$config_dir' is empty or ls failed." >&2
+        echo "Error: No files found in '$config_dir'." >&2
+        return 1
+    end
+
+    echo "DEBUG: All entries found in directory: '$all_entries'" >&2
+
+    for entry in $all_entries
+        # Construct full path to ensure we are checking files correctly
+        set -l full_path "$config_dir/$entry"
+
+        # Check if it's a regular file AND ends with .conf
+        if test -f "$full_path"
+            if string match -q -- "*.conf" "$full_path"
+                set -l server_full_name (basename $full_path .conf)
+                set -l file_country_name (echo $server_full_name | cut -d'-' -f1)
+                set file_country_name (echo $file_country_name | tr '[:upper:]' '[:lower:]')
+
+                echo "DEBUG: Processing file: '$full_path'" >&2
+                echo "DEBUG: Server full name: '$server_full_name'" >&2
+                echo "DEBUG: Extracted country: '$file_country_name'" >&2
+
+                if test -n "$target_country"
+                    if test "$file_country_name" = "$target_country"
+                        set -a available_servers $server_full_name
+                    end
+                else
+                    set -a available_servers $server_full_name
+                end
+            end
+        end
+    end
+    # --- END SIMPLIFIED LS AND FILTERING ---
+
+    echo "DEBUG: Available servers after filtering: '$available_servers'" >&2
+    echo "DEBUG: Number of available servers: (count $available_servers)" >&2
+
+    if test (count $available_servers) -eq 0
+        if test -n "$target_country"
+            echo "Error: No WireGuard servers found for country: '$target_country' in '$config_dir'." >&2
+            echo "Make sure the country name is spelled correctly (e.g., 'usa', 'sweden')." >&2
+        else
+            echo "Error: No matching WireGuard configurations found in '$config_dir'." >&2
+        end
+        return 1
+    end
+
+    set -l random_index (random (count $available_servers))
+    set -l chosen_server_name $available_servers[$random_index]
+
+    echo "Chosen WireGuard server: $chosen_server_name"
+    echo $chosen_server_name
+end

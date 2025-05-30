@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+
+import configparser
+import logging
+import os
+import shlex
+import subprocess
+import sys
+import time
+from gi.repository import GLib
+from pydbus import SessionBus # type: ignore
+import secretstorage # type: ignore # For Freedesktop Secret Service
+
+# --- Configuration ---
+# Users should create a config.ini file next to this script
+# Example config.ini:
+# [keepassxc]
+# database_path = /home/user/Documents/Passwords.kdbx
+#
+# [zulucrypt_gateway]
+# enabled = true
+# entry_title = ZuluCrypt Whonix Gateway Key
+# container_file = /home/user/encrypted_volumes/whonix_gateway.zulu
+# mapper_name = whonix_gw_decrypted
+# mount_point = /mnt/whonix_gw
+#
+# [zulucrypt_workstation]
+# enabled = true
+# entry_title = ZuluCrypt Whonix Workstation Key
+# container_file = /home/user/encrypted_volumes/whonix_workstation.zulu
+# mapper_name = whonix_ws_decrypted
+# mount_point = /mnt/whonix_ws
+
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+LOG_FORMAT = '%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+logger = logging.getLogger(__name__)
+
+# --- Helper Functions ---
+
+def is_mounted(mount_point_or_mapper):
+    """Checks if a given mount point is active or a mapper device exists."""
+    # Check if mount point is in use
+    try:
+        with open('/proc/mounts', 'r') as f:
+            for line in f:
+                if mount_point_or_mapper in line.split()[1]: # Check mount point column
+                    logger.info(f"'{mount_point_or_mapper}' appears to be an active mount point.")
+                    return True
+    except FileNotFoundError:
+        logger.warning("/proc/mounts not found, cannot check mount status via mounts file.")
+
+    # Check if mapper device exists (e.g., /dev/mapper/whonix_gw_decrypted)
+    mapper_device_path = os.path.join("/dev/mapper", mount_point_or_mapper)
+    if os.path.exists(mapper_device_path):
+         logger.info(f"Mapper device '{mapper_device_path}' exists.")
+         return True
+
+    logger.debug(f"Neither mount point nor mapper device for '{mount_point_or_mapper}' found active.")
+    return False
+
+def get_secret(entry_title):
+    """Retrieves a secret (passphrase) from the Freedesktop Secret Service."""
+    try:
+        bus = secretstorage.dbus_init() # Initialize D-Bus connection for secretstorage
+        collection = secretstorage.get_default_collection(bus)
+        if collection.is_locked():
+            logger.warning("Secret Service default collection is locked. Cannot retrieve secrets. "
+                           "Ensure your login keyring or KeePassXC's provided collection is unlocked.")
+            return None
+
+        # KeePassXC typically stores secrets with attributes that include the entry title as 'label'.
+        items = collection.search_items({"label": entry_title})
+        
+        retrieved_secret = None
+        for item in items: # Iterate as search_items can return multiple matches
+            logger.info(f"Found secret item with label: {item.get_label()} (ID: {item.get_path()})")
+            # You might want to add more checks here if multiple items match the label,
+            # e.g., check other attributes like 'application': 'KeePassXC'.
+            retrieved_secret = item.get_secret().decode('utf-8')
+            break # Assuming the first match is the correct one
+
+        if retrieved_secret:
+            return retrieved_secret
+        else:
+            logger.warning(f"No secret found with label '{entry_title}'. "
+                           "Ensure KeePassXC Secret Service integration is enabled, the entry exists, "
+                           "and the title matches exactly. Also check if KeePassXC exposes it with a 'label' attribute.")
+            return None
+            
+    except secretstorage.exceptions.ItemNotFoundException:
+        logger.warning(f"Secret item not found for label '{entry_title}'.")
+        return None
+    except secretstorage.exceptions.LockedException: # Should be caught by collection.is_locked() but good to have
+        logger.warning("Secret Service collection is locked when trying to access item.")
+        return None
+    except Exception as e:
+        logger.error(f"Error retrieving secret for '{entry_title}': {e}")
+        return None
+
+def mount_zulucrypt_container(container_config, passphrase):
+    """Mounts a zulucrypt container."""
+    container_file = os.path.expanduser(container_config['container_file'])
+    mapper_name = container_config['mapper_name']
+    mount_point = os.path.expanduser(container_config['mount_point'])
+
+    if is_mounted(mount_point) or is_mounted(mapper_name):
+        logger.info(f"Container for '{mapper_name}' or mount point '{mount_point}' already seems active. Skipping mount.")
+        return True
+
+    logger.info(f"Attempting to mount {container_file} to {mount_point} as {mapper_name}")
+
+    try:
+        # Ensure mount point directory exists.
+        # This command needs to be allowed in sudoers if mount_point is in a privileged location.
+        subprocess.run(['sudo', 'mkdir', '-p', mount_point], check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to create mount point {mount_point} using sudo mkdir. Error: {e.stderr.strip()}")
+        # Depending on setup, zulucrypt might still map without mounting if KVM uses the /dev/mapper device directly.
+        # However, for filesystem access, the mount point is needed.
+    except FileNotFoundError:
+        logger.error("`sudo` or `mkdir` command not found. Ensure they are installed and in PATH.")
+        return False
+
+
+    cmd = [
+        'sudo', 'zulucrypt-cli',
+        '-o', 
+        '-d', container_file,
+        '-m', mapper_name,
+        '-p', mount_point,
+        '--non-interactive',
+        '-P', '-' 
+    ]
+    logger.info(f"Executing command: {' '.join(shlex.quote(c) for c in cmd[:-2])} -P -")
+
+    try:
+        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate(input=passphrase + "\n") 
+
+        if process.returncode == 0:
+            logger.info(f"Successfully mounted {container_file} to {mount_point} (mapped as {mapper_name}). Output: {stdout.strip()}")
+            # Optional: Change ownership/permissions of the mount point after successful mount if needed.
+            # E.g., subprocess.run(['sudo', 'chown', f'{os.getuid()}:{os.getgid()}', mount_point], check=True)
+            return True
+        else:
+            logger.error(f"Failed to mount {container_file}. Return code: {process.returncode}")
+            logger.error(f"stdout: {stdout.strip()}")
+            logger.error(f"stderr: {stderr.strip()}")
+            return False
+    except FileNotFoundError:
+        logger.error("`sudo` or `zulucrypt-cli` command not found. Ensure they are installed and in PATH.")
+        return False
+    except Exception as e:
+        logger.error(f"An exception occurred while trying to mount {container_file}: {e}")
+        return False
+
+# --- D-Bus Signal Handler ---
+# These constants might need adjustment. Use d-feet to verify.
+KEEPASSXC_DBUS_SERVICE_NAME = 'org.keepassxc.KeePassXC'
+KEEPASSXC_DBUS_OBJECT_PATH = '/org/keepassxc/KeePassXC/MainWindow' # Or sometimes just '/' or '/org/keepassxc/KeePassXC'
+KEEPASSXC_DBUS_INTERFACE = 'org.keepassxc.KeePassXC.MainWindow' # Or 'org.keepassxc.KeePassXC'
+
+# Callback for the D-Bus signal
+def on_database_unlocked(parameters, expected_db_path_config, full_config_object):
+    """Callback for KeePassXC databaseUnlocked signal."""
+    # Parameters for databaseUnlocked(QString path, bool success)
+    # For bus.subscribe, params is a tuple.
+    db_path_from_signal = parameters[0]
+    unlock_success = parameters[1]
+
+    logger.info(f"KeePassXC D-Bus signal 'databaseUnlocked' received: path='{db_path_from_signal}', success={unlock_success}")
+
+    normalized_signal_path = os.path.normpath(os.path.expanduser(db_path_from_signal))
+    normalized_expected_db_path = os.path.normpath(os.path.expanduser(expected_db_path_config))
+
+    logger.debug(f"Normalized signal path: '{normalized_signal_path}'")
+    logger.debug(f"Normalized expected DB path: '{normalized_expected_db_path}'")
+
+    if unlock_success and normalized_signal_path == normalized_expected_db_path:
+        logger.info(f"Target KeePassXC database '{expected_db_path_config}' was unlocked successfully.")
+        
+        for section_name in full_config_object.sections():
+            if section_name.startswith('zulucrypt_') and full_config_object.getboolean(section_name, 'enabled', fallback=False):
+                logger.info(f"Processing container config: [{section_name}]")
+                entry_title = full_config_object.get(section_name, 'entry_title')
+                
+                passphrase = get_secret(entry_title)
+                if passphrase:
+                    logger.info(f"Retrieved passphrase for '{entry_title}'.")
+                    mount_zulucrypt_container(full_config_object[section_name], passphrase)
+                    del passphrase # Attempt to clear from memory
+                else:
+                    logger.warning(f"Could not retrieve passphrase for '{entry_title}'. Skipping mount for this container.")
+    elif not unlock_success:
+        logger.warning(f"KeePassXC database unlock attempt failed for '{db_path_from_signal}'.")
+    else:
+        logger.info(f"KeePassXC database '{db_path_from_signal}' unlocked, but it's not the target database ('{expected_db_path_config}'). Ignoring.")
+
+
+# --- Main Application ---
+def main():
+    # Load configuration
+    config = configparser.ConfigParser()
+    if not os.path.exists(CONFIG_FILE):
+        logger.error(f"Configuration file '{CONFIG_FILE}' not found. Please create it next to the script.")
+        # Provide example structure in log
+        logger.info("Example config.ini structure:\n"
+                    "[keepassxc]\n"
+                    "database_path = /path/to/your/Passwords.kdbx\n\n"
+                    "[zulucrypt_gateway]\n"
+                    "enabled = true\n"
+                    "entry_title = Your KeePassXC Entry Title for Gateway Key\n"
+                    "container_file = /path/to/gateway_container.zulu\n"
+                    "mapper_name = gateway_decrypted\n"
+                    "mount_point = /mnt/gateway\n\n"
+                    "# Add more [zulucrypt_XYZ] sections as needed")
+        sys.exit(1)
+    
+    try:
+        config.read(CONFIG_FILE)
+        expected_db_path = config.get('keepassxc', 'database_path')
+        if not expected_db_path:
+            logger.error("`database_path` not set in [keepassxc] section of config.ini.")
+            sys.exit(1)
+    except (configparser.Error, KeyError) as e:
+        logger.error(f"Error reading configuration file '{CONFIG_FILE}': {e}")
+        sys.exit(1)
+
+    logger.info(f"Script started. Monitoring KeePassXC database: {expected_db_path}")
+    logger.info("Ensure KeePassXC is running, D-Bus interface is enabled (usually under Browser or General settings).")
+    logger.info("Ensure Freedesktop Secret Service integration is enabled in KeePassXC (Tools -> Settings -> Secret Service Integration).")
+    logger.info("Python libraries needed: pydbus, secretstorage, pygobject (often via system packages like python3-gi).")
+    logger.info(f"This script uses 'sudo'. Configure /etc/sudoers for passwordless execution of specific commands if full automation is desired.")
+
+    loop = GLib.MainLoop()
+    bus = SessionBus() # Get a connection to the session bus
+
+    subscription = None
+    try:
+        # pydbus.SessionBus().subscribe is a convenient way to listen for signals
+        subscription = bus.subscribe(
+            sender=KEEPASSXC_DBUS_SERVICE_NAME, # The D-Bus name of the sender
+            iface=KEEPASSXC_DBUS_INTERFACE,    # The D-Bus interface emitting the signal
+            signal="databaseUnlocked",         # The name of the signal
+            object=KEEPASSXC_DBUS_OBJECT_PATH, # The D-Bus object path emitting the signal
+            arg0=None,                         # No filter on the first argument of the signal
+            flags=0,
+            # The callback receives: sender, object_path, interface_name, signal_name, parameters_tuple
+            signal_fired=lambda s, o, i, sig, params: on_database_unlocked(params, expected_db_path, config)
+        )
+        logger.info(f"Subscribed to D-Bus signal 'databaseUnlocked' from service '{KEEPASSXC_DBUS_SERVICE_NAME}', "
+                    f"object '{KEEPASSXC_DBUS_OBJECT_PATH}', interface '{KEEPASSXC_DBUS_INTERFACE}'.")
+
+    except GLib.Error as e: # This can catch D-Bus errors like service not available
+        logger.error(f"D-Bus Error during subscription: {e}. Could not connect or subscribe to KeePassXC D-Bus signal.")
+        logger.error("Troubleshooting steps:")
+        logger.error("1. Is KeePassXC running?")
+        logger.error("2. Is D-Bus interface enabled in KeePassXC settings (often under 'Browser Integration' or 'General Settings -> D-Bus')?")
+        logger.error(f"3. Are D-Bus constants in script correct? (KEEPASSXC_DBUS_SERVICE_NAME, etc.). Use 'd-feet' to verify.")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during D-Bus setup: {e}")
+        sys.exit(1)
+
+    try:
+        loop.run()
+    except KeyboardInterrupt:
+        logger.info("Script interrupted by user. Exiting.")
+    finally:
+        if subscription:
+            subscription.unsubscribe()
+            logger.info("Unsubscribed from D-Bus signal.")
+        loop.quit()
+
+if __name__ == '__main__':
+    main()
+
