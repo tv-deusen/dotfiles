@@ -1,5 +1,0 @@
-# Various window split rebinds
-keybind = ctrl+shift+a=goto_split:left
-keybind = ctrl+shift+d=goto_split:right
-keybind = ctrl+shift+w=goto_split:up
-keybind = ctrl+shift+s=goto_split:down

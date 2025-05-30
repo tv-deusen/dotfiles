@@ -1,0 +1,178 @@
+#!/usr/bin/env fish
+
+# Function to display usage information
+function display_usage
+    echo "Usage: start_virtualization <option>"
+    echo "Options:"
+    echo "  vm    - Start VirtualBox and disable KVM (if active)."
+    echo "  dock  - Start Docker Desktop and enable KVM (if active)."
+    echo ""
+    echo "Note: This script requires sudo for kernel module operations."
+    echo "It will prompt you for your password when necessary."
+end
+
+# Function to detect CPU type (Intel or AMD)
+function get_cpu_type
+    if grep -q "vmx" /proc/cpuinfo
+        echo "intel"
+    else if grep -q "svm" /proc/cpuinfo
+        echo "amd"
+    else
+        echo "unknown"
+    end
+end
+
+# Function to check if KVM modules are loaded
+function is_kvm_loaded
+    lsmod | grep -q "kvm"
+end
+
+# Function to check if VirtualBox kernel module is loaded
+function is_virtualbox_loaded
+    lsmod | grep -q "vboxdrv"
+end
+
+# Function to unload KVM modules
+function unload_kvm_modules
+    echo "Attempting to unload KVM modules..."
+    set cpu_type (get_cpu_type)
+    if test "$cpu_type" = "intel"
+        sudo rmmod kvm_intel 2>/dev/null
+    else if test "$cpu_type" = "amd"
+        sudo rmmod kvm_amd 2>/dev/null
+    end
+    sudo rmmod kvm 2>/dev/null
+
+    if is_kvm_loaded
+        echo "Error: KVM modules are still loaded. They might be in use by another application."
+        echo "Please ensure all KVM-based VMs (including Docker Desktop) are stopped."
+        return 1
+    else
+        echo "KVM modules unloaded successfully."
+        return 0
+    end
+end
+
+# Function to load KVM modules
+function load_kvm_modules
+    echo "Attempting to load KVM modules..."
+    set cpu_type (get_cpu_type)
+    sudo modprobe kvm 2>/dev/null
+    if test "$cpu_type" = "intel"
+        sudo modprobe kvm_intel 2>/dev/null
+    else if test "$cpu_type" = "amd"
+        sudo modprobe kvm_amd 2>/dev/null
+    end
+
+    if is_kvm_loaded
+        echo "KVM modules loaded successfully."
+        return 0
+    else
+        echo "Error: Failed to load KVM modules. Check your system configuration."
+        return 1
+    end
+end
+
+# Function to unload VirtualBox modules
+function unload_virtualbox_modules
+    echo "Attempting to unload VirtualBox modules..."
+    # Ensure all VirtualBox VMs are powered off before attempting to unload
+    if pgrep -x "VirtualBox" > /dev/null
+        echo "Warning: VirtualBox application is running. Please close it and any running VMs."
+        echo "Cannot unload VirtualBox modules while it's active."
+        return 1
+    end
+
+    sudo rmmod vboxnetadp 2>/dev/null
+    sudo rmmod vboxnetflt 2>/dev/null
+    sudo rmmod vboxpci 2>/dev/null
+    sudo rmmod vboxdrv 2>/dev/null
+
+    if is_virtualbox_loaded
+        echo "Error: VirtualBox modules are still loaded. They might be in use."
+        return 1
+    else
+        echo "VirtualBox modules unloaded successfully."
+        return 0
+    end
+end
+
+# Main script logic
+if test (count $argv) -ne 1
+    display_usage
+    exit 1
+end
+
+set action $argv[1]
+
+switch $action
+    case "vm"
+        echo "Preparing to start VirtualBox..."
+        if is_kvm_loaded
+            echo "KVM modules are currently loaded. Unloading them for VirtualBox."
+            if not unload_kvm_modules
+                echo "Failed to unload KVM modules. Aborting VirtualBox start."
+                exit 1
+            end
+        else
+            echo "KVM modules are not loaded. Proceeding."
+        end
+
+        if is_virtualbox_loaded
+            echo "VirtualBox modules are already loaded."
+        else
+            echo "Loading VirtualBox modules (if not already loaded by systemd/dkms)..."
+            # On Arch, virtualbox-host-dkms or virtualbox-host-modules-arch
+            # usually handle loading vboxdrv at boot. If not, you might need:
+            # sudo modprobe vboxdrv
+            # sudo modprobe vboxnetadp
+            # sudo modprobe vboxnetflt
+            # This script assumes dkms or systemd handles it.
+            # If you encounter issues, uncomment and use modprobe here.
+        end
+
+        echo "Starting VirtualBox..."
+        # On most systems, simply running 'VirtualBox' opens the GUI.
+        # If you have it as a systemd service, you might use:
+        # systemctl start virtualbox.service
+        nohup VirtualBox > /dev/null 2>&1 &
+        echo "VirtualBox started in the background."
+
+    case "dock"
+        echo "Preparing to start Docker Desktop..."
+        if is_virtualbox_loaded
+            echo "VirtualBox modules are currently loaded. Unloading them for Docker Desktop."
+            if not unload_virtualbox_modules
+                echo "Failed to unload VirtualBox modules. Aborting Docker Desktop start."
+                exit 1
+            end
+        else
+            echo "VirtualBox modules are not loaded. Proceeding."
+        end
+
+        if is_kvm_loaded
+            echo "KVM modules are already loaded."
+        else
+            echo "Loading KVM modules..."
+            if not load_kvm_modules
+                echo "Failed to load KVM modules. Aborting Docker Desktop start."
+                exit 1
+            end
+        end
+
+        echo "Starting Docker Desktop..."
+        # Docker Desktop on Arch Linux often runs as a systemd user service.
+        # You might need to enable it first: systemctl --user enable docker-desktop
+        # And then start it: systemctl --user start docker-desktop
+        # Or simply run the application if it's in your PATH:
+        nohup docker-desktop > /dev/null 2>&1 &
+        echo "Docker Desktop started in the background."
+
+    case "*"
+        echo "Invalid argument: '$action'"
+        display_usage
+        exit 1
+end
+
+echo "Operation completed."
+
