@@ -1,0 +1,1 @@
+keybind = ctrl+`="execute: /home/user/.config/ghostty/scripts/ollama-query.fish"

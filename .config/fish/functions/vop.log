@@ -1,0 +1,112 @@
+ 2025-05-28T22:33:59.958Z DEBUG vopono_core::util > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:33:59.958Z INFO  vopono_core::util > Calling sudo for elevated privileges, current user will be used as default user
+ 2025-05-28T22:33:59.958Z DEBUG vopono_core::util > Args: ["vopono", "--verbose", "exec", "--provider", "mullvad", "--server", "sweden", "--protocol", "wireguard", "mv-browser-wayland"]
+ 2025-05-28T22:34:00.054Z DEBUG vopono_core::util > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.055Z DEBUG vopono_core::util > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.056Z DEBUG vopono_core::util > Existing namespaces: []
+ 2025-05-28T22:34:00.056Z DEBUG vopono_core::util > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.056Z DEBUG vopono_core::util > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "custom" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "custom-netns-name" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "open-hosts" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "hosts" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "open-ports" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "forward" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "postup" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "predown" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "group" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "working-directory" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > invalid type: string "8.8.8.8", expected a sequence for key `dns`
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "user" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono::args_config > configuration property "port-forwarding-callback" not found
+ 2025-05-28T22:34:00.056Z DEBUG vopono_core::network::network_interface > ip addr
+ 2025-05-28T22:34:00.057Z DEBUG vopono::args_config                     > Interface: eno1
+ 2025-05-28T22:34:00.058Z DEBUG vopono::args_config                     > configuration property "trojan-host" not found
+ 2025-05-28T22:34:00.058Z DEBUG vopono::args_config                     > configuration property "trojan-password" not found
+ 2025-05-28T22:34:00.058Z DEBUG vopono::args_config                     > configuration property "trojan-config" not found
+ 2025-05-28T22:34:00.058Z DEBUG vopono_core::util                       > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.059Z DEBUG vopono_core::util                       > Existing namespaces: []
+ 2025-05-28T22:34:00.059Z DEBUG vopono_core::util                       > ip netns add vo_mv_sweden
+ 2025-05-28T22:34:00.061Z INFO  vopono_core::network::netns             > Created new network namespace: vo_mv_sweden
+ 2025-05-28T22:34:00.062Z DEBUG vopono_core::util                       > Existing interfaces: 
+ 2025-05-28T22:34:00.062Z DEBUG vopono_core::util                       > Assigned IPs: []
+ 2025-05-28T22:34:00.062Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip addr add 127.0.0.1/8 dev lo
+ 2025-05-28T22:34:00.064Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip link set lo up
+STATE      CONNECTIVITY  WIFI-HW  WIFI      WWAN-HW  WWAN      METERED 
+connected  full          enabled  disabled  missing  disabled  no      
+ 2025-05-28T22:34:00.078Z DEBUG vopono_core::network::veth_pair         > Detected NetworkManager running
+ 2025-05-28T22:34:00.078Z DEBUG vopono_core::network::veth_pair         > NetworkManager detected, adding vo_mv_sweden_d to unmanaged devices
+ 2025-05-28T22:34:00.078Z DEBUG vopono_core::network::veth_pair         > Creating new NetworkManager config file: /etc/NetworkManager/conf.d/unmanaged.conf
+ 2025-05-28T22:34:00.078Z DEBUG vopono_core::util                       > nmcli connection reload
+running
+ 2025-05-28T22:34:00.241Z DEBUG vopono_core::network::veth_pair         > Detected firewalld running
+ 2025-05-28T22:34:00.241Z DEBUG vopono_core::network::veth_pair         > Detected firewalld running, adding vo_mv_sweden_d veth device to trusted zone
+Warning: ZONE_ALREADY_SET: 'vo_mv_sweden_d' already bound to 'trusted'
+success
+ 2025-05-28T22:34:00.396Z DEBUG vopono_core::util                       > ip link add vo_mv_sweden_d type veth peer name vo_mv_sweden_s
+ 2025-05-28T22:34:00.399Z DEBUG vopono_core::util                       > ip link set vo_mv_sweden_d up
+ 2025-05-28T22:34:00.400Z DEBUG vopono_core::util                       > ip link set vo_mv_sweden_s netns vo_mv_sweden up
+ 2025-05-28T22:34:00.411Z DEBUG vopono_core::util                       > ip addr add 10.200.1.1/24 dev vo_mv_sweden_d
+ 2025-05-28T22:34:00.413Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip addr add 10.200.1.2/24 dev vo_mv_sweden_s
+ 2025-05-28T22:34:00.415Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip route add default via 10.200.1.1 dev vo_mv_sweden_s
+ 2025-05-28T22:34:00.417Z INFO  vopono_core::network::netns             > IP address of namespace as seen from host: 10.200.1.2
+ 2025-05-28T22:34:00.417Z INFO  vopono_core::network::netns             > IP address of host as seen from namespace: 10.200.1.1
+ 2025-05-28T22:34:00.417Z DEBUG vopono_core::util                       > nft add table inet vopono_nat
+ 2025-05-28T22:34:00.419Z DEBUG vopono_core::util                       > nft add chain inet vopono_nat postrouting { type nat hook postrouting priority 100 ; }
+ 2025-05-28T22:34:00.422Z DEBUG vopono_core::util                       > nft add rule inet vopono_nat postrouting oifname eno1 ip saddr 10.200.1.0/24 counter masquerade
+ 2025-05-28T22:34:00.427Z DEBUG vopono_core::util                       > nft add table inet vopono_bridge
+ 2025-05-28T22:34:00.429Z DEBUG vopono_core::util                       > nft add chain inet vopono_bridge forward { type filter hook forward priority -10 ; }
+ 2025-05-28T22:34:00.433Z DEBUG vopono_core::util                       > nft add rule inet vopono_bridge forward iifname vo_mv_sweden_d oifname eno1 counter accept
+ 2025-05-28T22:34:00.437Z DEBUG vopono_core::util                       > nft add rule inet vopono_bridge forward oifname vo_mv_sweden_d iifname eno1 counter accept
+ 2025-05-28T22:34:00.441Z DEBUG vopono_core::util                       > sysctl -q net.ipv4.ip_forward=1
+ 2025-05-28T22:34:00.441Z DEBUG vopono_core::util                       > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.443Z INFO  vopono_core::util                       > Chosen config: /home/user/.config/vopono/mv/wireguard/sweden-sesto006.conf
+ 2025-05-28T22:34:00.443Z DEBUG vopono_core::network::wireguard         > Deserializing: 8.8.8.8 to Vec<IpAddr>
+ 2025-05-28T22:34:00.443Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip link add vo_mv_sweden type wireguard
+ 2025-05-28T22:34:00.446Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden wg setconf vo_mv_sweden /tmp/vopono_wg.conf
+ 2025-05-28T22:34:00.448Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -4 address add 10.74.102.204/32 dev vo_mv_sweden
+ 2025-05-28T22:34:00.450Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -6 address add fc00:bbbb:bbbb:bb01::b:66cb/128 dev vo_mv_sweden
+ 2025-05-28T22:34:00.451Z DEBUG vopono_core::network::wireguard         > Using MTU set in Wireguard config: 1420
+ 2025-05-28T22:34:00.452Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip link set mtu 1420 up dev vo_mv_sweden
+ 2025-05-28T22:34:00.454Z DEBUG vopono_core::network::dns_config        > Setting namespace vo_mv_sweden DNS server to 8.8.8.8
+ 2025-05-28T22:34:00.454Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden nft insert rule inet vo_mv_sweden output ip daddr 8.8.8.8 counter accept
+Error: Could not process rule: No such file or directory
+insert rule inet vo_mv_sweden output ip daddr 8.8.8.8 counter accept
+                 ^^^^^^^^^^^^
+ 2025-05-28T22:34:00.478Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden wg set vo_mv_sweden fwmark 51820
+ 2025-05-28T22:34:00.480Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -4 route add 0.0.0.0/0 dev vo_mv_sweden table 51820
+ 2025-05-28T22:34:00.483Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -4 rule add not fwmark 51820 table 51820
+ 2025-05-28T22:34:00.486Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -4 rule add table main suppress_prefixlength 0
+ 2025-05-28T22:34:00.489Z DEBUG vopono_core::util                       > sysctl -q net.ipv4.conf.all.src_valid_mark=1
+ 2025-05-28T22:34:00.489Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -6 route add ::/0 dev vo_mv_sweden table 51820
+ 2025-05-28T22:34:00.492Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -6 rule add not fwmark 51820 table 51820
+ 2025-05-28T22:34:00.495Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden ip -6 rule add table main suppress_prefixlength 0
+ 2025-05-28T22:34:00.497Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden nft -f /tmp/vopono_nft.sh
+ 2025-05-28T22:34:00.500Z DEBUG vopono_core::network::wireguard         > Setting Wireguard killswitch....
+ 2025-05-28T22:34:00.500Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden nft add table inet vo_mv_sweden
+ 2025-05-28T22:34:00.503Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden nft add chain inet vo_mv_sweden output { type filter hook output priority -500 ; policy accept; }
+ 2025-05-28T22:34:00.505Z DEBUG vopono_core::network::netns             > ip netns exec vo_mv_sweden nft add rule inet vo_mv_sweden output oifname != vo_mv_sweden mark != 51820 fib daddr type != local counter reject
+ 2025-05-28T22:34:00.508Z DEBUG vopono_core::util                       > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.508Z DEBUG vopono_core::network::netns             > Writing lockfile: /home/user/.config/vopono/locks/vo_mv_sweden
+ 2025-05-28T22:34:00.508Z DEBUG vopono_core::network::netns             > Lockfile written: /home/user/.config/vopono/locks/vo_mv_sweden/171837
+ 2025-05-28T22:34:00.508Z DEBUG vopono_core::util                       > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.599Z WARN  vopono_core::util::env_vars             > Could not get PULSE_SERVER: Could not parse pactl output!:
+
+ 2025-05-28T22:34:00.599Z DEBUG vopono_core::network::application_wrapper > ip netns exec vo_mv_sweden sudo --preserve-env --user user mv-browser-wayland
+ 2025-05-28T22:34:00.599Z INFO  vopono::exec                              > Application mv-browser-wayland launched in network namespace vo_mv_sweden with pid 171925
+sudo: mv-browser-wayland: command not found
+ 2025-05-28T22:34:00.686Z DEBUG vopono_core::util                         > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.687Z DEBUG vopono_core::util                         > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.687Z INFO  vopono_core::network::netns               > Shutting down vopono namespace - as there are no processes left running inside
+ 2025-05-28T22:34:00.687Z DEBUG vopono_core::util                         > ip link delete vo_mv_sweden_d
+ 2025-05-28T22:34:00.712Z DEBUG vopono_core::util                         > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.712Z DEBUG vopono_core::util                         > nmcli connection reload
+ 2025-05-28T22:34:00.722Z DEBUG vopono_core::util                         > ip netns exec vo_mv_sweden ip link del vo_mv_sweden
+ 2025-05-28T22:34:00.841Z DEBUG vopono_core::util                         > ip netns exec vo_mv_sweden nft delete table inet vo_mv_sweden
+ 2025-05-28T22:34:00.867Z DEBUG vopono_core::util                         > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.867Z DEBUG vopono_core::network::host_masquerade     > Remaining namespaces: Ok({})
+ 2025-05-28T22:34:00.867Z DEBUG vopono_core::util                         > nft delete table inet vopono_nat
+ 2025-05-28T22:34:00.892Z DEBUG vopono_core::util                         > Using config dir from $HOME config: /home/user/.config
+ 2025-05-28T22:34:00.892Z DEBUG vopono_core::network::host_masquerade     > Remaining namespaces: Ok({})
+ 2025-05-28T22:34:00.892Z DEBUG vopono_core::util                         > nft delete table inet vopono_bridge
+ 2025-05-28T22:34:00.911Z DEBUG vopono_core::util                         > ip netns delete vo_mv_sweden
